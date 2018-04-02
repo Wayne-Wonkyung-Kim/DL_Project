@@ -118,7 +118,39 @@ def load_variables_from_checkpoint(sess, start_checkpoint):
 
 
 def create_crnn_model(fingerprint_input, model_settings, is_training):
-    
+    """Builds a Convolutional Recurrent model.
+
+    This model is an improved version of CNN for speech command recognition
+    which has recurrent layers at the end of convolutional layers.
+
+    Here's the layout of the graph:
+
+    (fingerprint input)
+        v
+    [Conv2D]<-(weights)
+        v
+    [BiasAdd]<-(bias)
+        v
+     [Relu]
+        v
+    [Recurrent cell]
+        v
+    [FC layer]<-(weights)
+        v
+    [BiasAdd]
+        v
+    [softmax]
+        v
+
+    Args: 
+      fingerprint_input: TensorFlow node that will output audio feature vectors.
+      model_settings: Dictionary of information about the model.
+      is_training: Whether the model is going to be used for training.
+
+    Returns:
+      TensorFlow node outputting logits results, and optionally a dropout
+      placeholder.
+    """
     
     if is_training:
         dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
