@@ -1,5 +1,5 @@
 # Columbia Deep Learning Project
-# Tean 19
+# Team 19
 
 Tensorflow Speech Recognition with CRNN
 
