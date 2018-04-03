@@ -26,3 +26,6 @@ https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/speech_
 Convolutional Recurrent Neural Networks for Small-Footprint Keyword Spotting
 https://arxiv.org/pdf/1703.05390.pdf
 
+### Code We've Implemented
+models.py (create_crnn_model()) 
+
