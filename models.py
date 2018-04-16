@@ -103,6 +103,8 @@ def create_model(fingerprint_input, model_settings, model_architecture,
     return create_GRU_rcnn_model(fingerprint_input, model_settings, is_training)
   elif model_architecture == 'rcnn_lstm':
     return create_LSTM_rcnn_model(fingerprint_input, model_settings, is_training)
+  elif model_architecture == 'cnn':
+    return create_cnn_model(fingerprint_input, model_settings, is_training)
   
   else:
     raise Exception('model_architecture argument "' + model_architecture +
@@ -121,6 +123,179 @@ def load_variables_from_checkpoint(sess, start_checkpoint):
   saver.restore(sess, start_checkpoint)
 
 
+ 
+# SY: this is WIP. not working yet for the 2nd layer:
+def create_cnn_model(fingerprint_input, model_settings, is_training):
+
+"""Builds a standard convolutional model.
+  This is roughly the network labeled as 'cnn-trad-fpool3' in the
+  'Convolutional Neural Networks for Small-footprint Keyword Spotting' paper:
+  http://www.isca-speech.org/archive/interspeech_2015/papers/i15_1478.pdf
+  Here's the layout of the graph:
+  (fingerprint_input)
+          v
+      [Conv2D]<-(weights)
+          v
+      [BiasAdd]<-(bias)
+          v
+        [Relu]
+          v
+      [MaxPool]
+          v
+      [Conv2D]<-(weights)
+          v
+      [BiasAdd]<-(bias)
+          v
+        [Relu]
+          v
+      [MaxPool]
+          v
+      [MatMul]<-(weights)
+          v
+      [BiasAdd]<-(bias)
+          v
+  This produces fairly good quality results, but can involve a large number of
+  weight parameters and computations. For a cheaper alternative from the same
+  paper with slightly less accuracy, see 'low_latency_conv' below.
+  During training, dropout nodes are introduced after each relu, controlled by a
+  placeholder.
+  Args:
+    fingerprint_input: TensorFlow node that will output audio feature vectors.
+    model_settings: Dictionary of information about the model.
+    is_training: Whether the model is going to be used for training.
+  Returns:
+    TensorFlow node outputting logits results, and optionally a dropout
+    placeholder.
+  """ 
+    if is_training:
+        dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
+    input_frequency_size = model_settings['dct_coefficient_count']
+    input_time_size = model_settings['spectrogram_length']
+    fingerprint_4d = tf.reshape(fingerprint_input,
+                                [-1, input_time_size, input_frequency_size, 1])
+
+    layer_norm = False
+    bidirectional = True
+    
+    # CNN Model
+    first_filter_width = 8
+    first_filter_height = 20
+    first_filter_count = 64
+    stride_x = 1
+    stride_y = 4
+    
+    first_weights = tf.Variable(
+            tf.truncated_normal(
+                [first_filter_height, first_filter_width, 1, first_filter_count],
+                stddev=0.01))
+    first_bias = tf.Variable(tf.zeros([first_filter_count]))
+    
+    first_conv = tf.nn.conv2d(fingerprint_4d, first_weights,
+                              [1, stride_y, stride_x, 1], 'VALID') + first_bias
+
+    
+    first_relu = tf.nn.relu(first_conv)
+    if is_training:
+        first_dropout = tf.nn.dropout(first_relu, dropout_prob)
+    else:
+        first_dropout = first_relu
+
+    first_conv_output_width = int(math.floor((input_frequency_size - first_filter_width + stride_x) /
+                                              stride_x))
+    first_conv_output_height = int(math.floor((input_time_size - first_filter_height + stride_y) /
+                                               stride_y))
+    #first_reshaped = tf.reshape(first_dropout, [-1, first_conv_output_height, first_conv_output_width,
+    #                                  first_conv_output_width * first_filter_count] )
+    print ("first_dropout: ", first_dropout.get_shape())
+    #print ("first_reshaped: ", first_reshaped.get_shape())
+    second_filter_width = 4
+    second_filter_height = 10
+    second_filter_count = 64
+    
+    second_weights = tf.Variable(
+      tf.truncated_normal(
+          [
+              second_filter_height, second_filter_width, first_filter_count,
+              second_filter_count
+          ],
+          stddev=0.01))
+    second_bias = tf.Variable(tf.zeros([second_filter_count]))
+
+    second_conv = tf.nn.conv2d(first_dropout, second_weights, [1, stride_y, stride_x, 1],
+                               'VALID') + second_bias
+    
+    second_relu = tf.nn.relu(second_conv)
+
+    if is_training:
+      second_dropout = tf.nn.dropout(second_relu, dropout_prob)
+    else:
+      second_dropout = second_relu
+
+    second_conv_shape = second_dropout.get_shape()
+    print(second_conv_shape)
+    #second_conv_output_width = second_conv_shape[2]
+    #second_conv_output_height = second_conv_shape[1]
+    second_conv_output_width = int(math.floor((input_frequency_size - second_filter_width + stride_x) /
+                                              stride_x))
+    second_conv_output_height = int(math.floor((input_time_size - second_filter_height + stride_y) /
+                                               stride_y))
+    print(second_conv_output_height, second_conv_output_width)
+    
+    second_conv_element_count = int(
+        second_conv_output_width * second_conv_output_height *
+        second_filter_count)
+
+    flattened_second_conv = tf.reshape(second_dropout,
+                                       [-1, second_conv_element_count])
+    label_count = model_settings['label_count']
+    
+    final_fc_weights = tf.Variable(
+        tf.truncated_normal(
+            [second_conv_element_count, label_count], stddev=0.01))
+    final_fc_bias = tf.Variable(tf.zeros([label_count]))
+    final_fc = tf.matmul(flattened_second_conv, final_fc_weights) + final_fc_bias
+    '''
+    # GRU Model
+    num_layers = 2
+    RNN_units = 128
+
+
+    flow = tf.reshape(first_dropout, [-1, first_conv_output_height,
+                                      first_conv_output_width * first_filter_count])
+        
+    forward_cell, backward_cell = [], []
+    
+    
+    for i in range(num_layers):
+        forward_cell.append(tf.contrib.rnn.GRUCell(RNN_units))
+        backward_cell.append(tf.contrib.rnn.GRUCell(RNN_units))
+
+    outputs, output_state_fw, output_state_bw = tf.contrib.rnn.stack_bidirectional_dynamic_rnn(forward_cell, backward_cell, flow, dtype=tf.float32)
+    flow_dim = first_conv_output_height * RNN_units * 2
+    flow = tf.reshape(outputs, [-1, flow_dim])
+    
+    fc_output_channels = 256
+    fc_weights = tf.get_variable('fcw', shape=[flow_dim,fc_output_channels],
+                                 initializer=tf.contrib.layers.xavier_initializer())
+
+    fc_bias = tf.Variable(tf.zeros([fc_output_channels]))
+    fc = tf.nn.relu(tf.matmul(flow, fc_weights) + fc_bias)
+    
+    if is_training:
+        final_fc_input = tf.nn.dropout(fc, dropout_prob)
+    else:
+        final_fc_input = fc
+
+    label_count = model_settings['label_count']
+
+    final_fc_weights = tf.Variable(tf.truncated_normal([fc_output_channels, label_count], stddev=0.01))
+    final_fc_bias = tf.Variable(tf.zeros([label_count]))
+    final_fc = tf.matmul(final_fc_input, final_fc_weights) + final_fc_bias
+    '''
+    if is_training:
+        return final_fc, dropout_prob
+    else:
+        return final_fc
 
 
 def create_GRU_crnn_model(fingerprint_input, model_settings, is_training):

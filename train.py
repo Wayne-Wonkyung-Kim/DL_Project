@@ -150,7 +150,13 @@ def main(_):
   with tf.name_scope('train'), tf.control_dependencies(control_dependencies):
     learning_rate_input = tf.placeholder(
         tf.float32, [], name='learning_rate_input')
-    train_step = tf.train.GradientDescentOptimizer(
+    
+    if FLAGS.optimizer_type == "adam":
+      opt = tf.train.AdamOptimizer()
+      #lr = opt._lr
+      train_step = opt.minimize(cross_entropy_mean)
+    else:
+      train_step = tf.train.GradientDescentOptimizer(
         learning_rate_input).minimize(cross_entropy_mean)
   predicted_indices = tf.argmax(logits, 1)
   correct_prediction = tf.equal(predicted_indices, ground_truth_input)
@@ -194,12 +200,15 @@ def main(_):
   training_steps_max = np.sum(training_steps_list)
   for training_step in xrange(start_step, training_steps_max + 1):
     # Figure out what the current learning rate is.
-    training_steps_sum = 0
-    for i in range(len(training_steps_list)):
-      training_steps_sum += training_steps_list[i]
-      if training_step <= training_steps_sum:
-        learning_rate_value = learning_rates_list[i]
-        break
+    if FLAGS.optimizer_type == "adam":
+      learning_rate_value = 0.001#lr #sess.run(str(opt._lr))
+    else:
+      training_steps_sum = 0
+      for i in range(len(training_steps_list)):
+        training_steps_sum += training_steps_list[i]
+        if training_step <= training_steps_sum:
+          learning_rate_value = learning_rates_list[i]
+          break
     # Pull the audio samples we'll use for training.
     train_fingerprints, train_ground_truth = audio_processor.get_data(
         FLAGS.batch_size, 0, model_settings, FLAGS.background_frequency,
@@ -398,7 +407,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--summaries_dir',
       type=str,
-      default='/tmp/retrain_logs',
+      default= '/tmp/retrain_logs',
       help='Where to save summary logs for TensorBoard.')
   parser.add_argument(
       '--wanted_words',
@@ -408,7 +417,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--train_dir',
       type=str,
-      default='/tmp/speech_commands_train',
+      default= '/tmp/speech_commands_train',
       help='Directory to write event logs and checkpoint.')
   parser.add_argument(
       '--save_step_interval',
@@ -423,13 +432,18 @@ if __name__ == '__main__':
   parser.add_argument(
       '--model_architecture',
       type=str,
-      default='crnn',
+      default='crnn_gru',
       help='What model architecture to use')
   parser.add_argument(
       '--check_nans',
       type=bool,
       default=False,
       help='Whether to check for invalid numbers during processing')
+  parser.add_argument(
+      '--optimizer_type',
+      type=str,
+      default="gradient",
+      help='Optimizer type. choose adam or gradient')
 
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
