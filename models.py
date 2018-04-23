@@ -169,11 +169,14 @@ def create_GRU_crnn_model(fingerprint_input, model_settings, is_training):
     bidirectional = True
     
     # CNN Model
-    first_filter_width = 8
-    first_filter_height = 20
-    first_filter_count = 64
-    stride_x = 1
-    stride_y = 2
+    #first_filter_width = 8
+    first_filter_width = 1
+    first_filter_height = 5
+    #first_filter_count = 64
+    first_filter_count = 32
+    #stride_x = 1
+    stride_x = 4
+    stride_y = 1
     
     first_weights = tf.Variable(
             tf.truncated_normal(
@@ -199,7 +202,8 @@ def create_GRU_crnn_model(fingerprint_input, model_settings, is_training):
 
     # GRU Model
     num_layers = 2
-    RNN_units = 128
+    #RNN_units = 128
+    RNN_units = 8
 
 
     flow = tf.reshape(first_dropout, [-1, first_conv_output_height,
@@ -216,7 +220,8 @@ def create_GRU_crnn_model(fingerprint_input, model_settings, is_training):
     flow_dim = first_conv_output_height * RNN_units * 2
     flow = tf.reshape(outputs, [-1, flow_dim])
     
-    fc_output_channels = 256
+    #fc_output_channels = 256
+    fc_output_channels = 64
     fc_weights = tf.get_variable('fcw', shape=[flow_dim,fc_output_channels],
                                  initializer=tf.contrib.layers.xavier_initializer())
 
@@ -291,10 +296,13 @@ def create_LSTM_crnn_model(fingerprint_input, model_settings, is_training):
 
 
     # CNN Model
-    first_filter_width = 8
+    #first_filter_width = 8
+    first_filter_width = 5
     first_filter_height = 20
-    first_filter_count = 64
-    stride_x = 1
+    #first_filter_count = 64
+    first_filter_count = 32
+    #stride_x = 1
+    stride_x = 8
     stride_y = 2
     
     first_weights = tf.Variable(
@@ -322,8 +330,10 @@ def create_LSTM_crnn_model(fingerprint_input, model_settings, is_training):
 
 
     # GRU Model
-    num_layers = 2
-    RNN_units = 128
+    #num_layers = 2
+    num_layers = 3
+    #RNN_units = 128
+    RNN_units = 8
 
 
     flow = tf.reshape(first_dropout, [-1, first_conv_output_height,
@@ -343,7 +353,8 @@ def create_LSTM_crnn_model(fingerprint_input, model_settings, is_training):
     
     flow = tf.reshape(outputs, [-1, flow_dim])
     
-    fc_output_channels = 256
+    #fc_output_channels = 256
+    fc_output_channels = 64
     fc_weights = tf.get_variable('fcw', shape=[flow_dim,fc_output_channels],
                                  initializer=tf.contrib.layers.xavier_initializer())
 

@@ -77,7 +77,7 @@ import sys
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
-
+import timeit
 import input_data
 import models
 from tensorflow.python.platform import gfile
@@ -265,6 +265,10 @@ def main(_):
   for i in xrange(0, set_size, FLAGS.batch_size):
     test_fingerprints, test_ground_truth = audio_processor.get_data(
         FLAGS.batch_size, i, model_settings, 0.0, 0.0, 0, 'testing', sess)
+
+    start_time = timeit.default_timer()
+    #####################################################################
+
     test_accuracy, conf_matrix = sess.run(
         [evaluation_step, confusion_matrix],
         feed_dict={
@@ -272,6 +276,11 @@ def main(_):
             ground_truth_input: test_ground_truth,
             dropout_prob: 1.0
         })
+    #####################################################################
+    elapsed = timeit.default_timer() - start_time
+    print("Time taken: " + str(elapsed))
+
+
     batch_size = min(FLAGS.batch_size, set_size - i)
     total_accuracy += (test_accuracy * batch_size) / set_size
     if total_conf_matrix is None:
@@ -281,6 +290,25 @@ def main(_):
   tf.logging.info('Confusion Matrix:\n %s' % (total_conf_matrix))
   tf.logging.info('Final test accuracy = %.1f%% (N=%d)' % (total_accuracy * 100,
                                                            set_size))
+
+
+
+  ######################
+  '''
+  total_parameters = 0
+  #iterating over all variables
+  for variable in tf.trainable_variables():  
+    local_parameters=1
+    shape = variable.get_shape()  #getting shape of a variable
+    for i in shape:
+      local_parameters*=i.value  #mutiplying dimension values
+    total_parameters+=local_parameters
+
+  print("Number of Parameters: {}".format(total_parameters))
+  '''
+  print(np.sum([np.product([xi.value for xi in x.get_shape()]) for x in tf.all_variables()]))
+
+  ######################
 
 
 if __name__ == '__main__':
@@ -376,7 +404,8 @@ if __name__ == '__main__':
   parser.add_argument(
       '--how_many_training_steps',
       type=str,
-      default='5000,5000,5000,5000,5000',
+      #default='5000,5000,5000,5000,5000',
+      default='1',
       help='How many training loops to run',)
   parser.add_argument(
       '--eval_step_interval',
@@ -387,7 +416,8 @@ if __name__ == '__main__':
       '--learning_rate',
       type=str,
       #default='0.001,0.0001',
-      default='0.02,0.01,0.005,0.001,0.0001',
+      #default='0.02,0.01,0.005,0.001,0.0001',
+      default='0.1',
       help='How large a learning rate to use when training.')
   parser.add_argument(
       '--batch_size',
@@ -423,7 +453,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--model_architecture',
       type=str,
-      default='crnn',
+      default='crnn_gru',
       help='What model architecture to use')
   parser.add_argument(
       '--check_nans',
