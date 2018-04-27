@@ -127,46 +127,7 @@ def load_variables_from_checkpoint(sess, start_checkpoint):
 # SY: this is WIP. not working yet for the 2nd layer:
 def create_cnn_model(fingerprint_input, model_settings, is_training):
 
-"""Builds a standard convolutional model.
-  This is roughly the network labeled as 'cnn-trad-fpool3' in the
-  'Convolutional Neural Networks for Small-footprint Keyword Spotting' paper:
-  http://www.isca-speech.org/archive/interspeech_2015/papers/i15_1478.pdf
-  Here's the layout of the graph:
-  (fingerprint_input)
-          v
-      [Conv2D]<-(weights)
-          v
-      [BiasAdd]<-(bias)
-          v
-        [Relu]
-          v
-      [MaxPool]
-          v
-      [Conv2D]<-(weights)
-          v
-      [BiasAdd]<-(bias)
-          v
-        [Relu]
-          v
-      [MaxPool]
-          v
-      [MatMul]<-(weights)
-          v
-      [BiasAdd]<-(bias)
-          v
-  This produces fairly good quality results, but can involve a large number of
-  weight parameters and computations. For a cheaper alternative from the same
-  paper with slightly less accuracy, see 'low_latency_conv' below.
-  During training, dropout nodes are introduced after each relu, controlled by a
-  placeholder.
-  Args:
-    fingerprint_input: TensorFlow node that will output audio feature vectors.
-    model_settings: Dictionary of information about the model.
-    is_training: Whether the model is going to be used for training.
-  Returns:
-    TensorFlow node outputting logits results, and optionally a dropout
-    placeholder.
-  """ 
+   
     if is_training:
         dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
     input_frequency_size = model_settings['dct_coefficient_count']
@@ -345,13 +306,13 @@ def create_GRU_crnn_model(fingerprint_input, model_settings, is_training):
     
     # CNN Model
     #first_filter_width = 8
-    first_filter_width = 1
-    first_filter_height = 5
+    first_filter_width = 5
+    first_filter_height = 20
     #first_filter_count = 64
     first_filter_count = 32
     #stride_x = 1
     stride_x = 4
-    stride_y = 1
+    stride_y = 2
     
     first_weights = tf.Variable(
             tf.truncated_normal(
@@ -378,7 +339,7 @@ def create_GRU_crnn_model(fingerprint_input, model_settings, is_training):
     # GRU Model
     num_layers = 2
     #RNN_units = 128
-    RNN_units = 8
+    RNN_units = 64
 
 
     flow = tf.reshape(first_dropout, [-1, first_conv_output_height,
@@ -395,8 +356,8 @@ def create_GRU_crnn_model(fingerprint_input, model_settings, is_training):
     flow_dim = first_conv_output_height * RNN_units * 2
     flow = tf.reshape(outputs, [-1, flow_dim])
     
-    #fc_output_channels = 256
-    fc_output_channels = 64
+    fc_output_channels = 128
+    #fc_output_channels = 64
     fc_weights = tf.get_variable('fcw', shape=[flow_dim,fc_output_channels],
                                  initializer=tf.contrib.layers.xavier_initializer())
 
@@ -595,9 +556,6 @@ def create_GRU_rcnn_model(fingerprint_input, model_settings, is_training):
     if is_training:
         dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
     
-    
-    
-    
     input_frequency_size = model_settings['dct_coefficient_count']
     input_time_size = model_settings['spectrogram_length']
     
@@ -607,7 +565,7 @@ def create_GRU_rcnn_model(fingerprint_input, model_settings, is_training):
 
     # RNN Model
     num_layers = 2
-    RNN_units = 128
+    RNN_units = 8
 
 
     flow = tf.reshape(fingerprint_input, [-1, input_time_size, input_frequency_size])
@@ -630,6 +588,7 @@ def create_GRU_rcnn_model(fingerprint_input, model_settings, is_training):
 
     
     fc_output_channels = 1960
+
     fc_weights = tf.get_variable('fcw', shape=[flow_dim,fc_output_channels],
                                  initializer=tf.contrib.layers.xavier_initializer())
 
@@ -649,10 +608,10 @@ def create_GRU_rcnn_model(fingerprint_input, model_settings, is_training):
     fingerprint_4d = tf.reshape(cnn_input,
                                 [-1, input_time_size, input_frequency_size, 1])
 
-    first_filter_width = 8
+    first_filter_width = 5
     first_filter_height = 20
-    first_filter_count = 64
-    stride_x = 1
+    first_filter_count = 32
+    stride_x = 8
     stride_y = 2
 
     
@@ -686,11 +645,26 @@ def create_GRU_rcnn_model(fingerprint_input, model_settings, is_training):
 
 
 
+
+    fc_output_channels = 32
+    fc_weights = tf.get_variable('fcw2', shape=[output_channels,fc_output_channels],
+                                 initializer=tf.contrib.layers.xavier_initializer())
+
+    fc_bias = tf.Variable(tf.zeros([fc_output_channels]))
+    fc = tf.nn.relu(tf.matmul(flattened_conv, fc_weights) + fc_bias)
+    
+    if is_training:
+        final_fc_input = tf.nn.dropout(fc, dropout_prob)
+    else:
+        final_fc_input = fc
+
+
+
     label_count = model_settings['label_count']
 
-    final_fc_weights = tf.Variable(tf.truncated_normal([output_channels, label_count], stddev=0.01))
+    final_fc_weights = tf.Variable(tf.truncated_normal([fc_output_channels, label_count], stddev=0.01))
     final_fc_bias = tf.Variable(tf.zeros([label_count]))
-    final_fc = tf.matmul(flattened_conv, final_fc_weights) + final_fc_bias
+    final_fc = tf.matmul(final_fc_input, final_fc_weights) + final_fc_bias
 
 
     if is_training:
